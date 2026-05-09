@@ -1,0 +1,13 @@
+anthropic>=0.40.0
+yfinance>=0.2.50
+requests>=2.32.0
+tavily-python>=0.3.0
+python-dotenv>=1.0.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.0
+pydantic>=2.10.0
+pandas>=2.2.0
+numpy>=2.0.0
+aiohttp>=3.10.0
+json-repair>=0.30.0
