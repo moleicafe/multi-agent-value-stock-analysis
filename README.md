@@ -6,6 +6,22 @@ Built with a **FastAPI** backend orchestrating **11 parallel Claude agents** and
 
 ---
 
+## Screenshots
+
+**Market dashboard** — live indices, AI-rated top picks, and market news:
+
+![Market dashboard](docs/screenshots/home.png)
+
+**Stock overview** — price & fundamentals beside the composite score radar and moat rating:
+
+![NVDA stock dashboard](docs/screenshots/stock-nvda.png)
+
+**AI Insights** — the Judge's verdict with the full multi-agent debate one click away:
+
+![AI insights tab](docs/screenshots/ai-insights.png)
+
+---
+
 ## Why I built this
 
 Most stock screeners hand you numbers and leave the reasoning to you. I wanted to see whether a **team of narrow, opinionated AI analysts** — deliberately disagreeing with each other — could produce a more honest, more balanced investment thesis than a single monolithic prompt. The result is a system where you can watch the bull case and the bear case get built independently, then reconciled.
