@@ -1,8 +1,12 @@
 import asyncio
 import logging
+import os
+import secrets as _secrets
+import time
+from collections import deque
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, Header, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -13,6 +17,35 @@ from agents.orchestrator import analyze_stock
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ── Security ─────────────────────────────────────────────────────────────────
+
+def require_api_key(x_api_key: str = Header(default="")):
+    """
+    Optional auth for expensive/destructive endpoints. Enforced only when
+    INVESTAI_API_KEY is set, so the default localhost dev flow is unchanged.
+    """
+    expected = os.getenv("INVESTAI_API_KEY", "")
+    if expected and not _secrets.compare_digest(x_api_key, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+
+
+_analyze_calls: deque = deque()
+
+
+def _check_analyze_rate_limit():
+    """In-process sliding-window limit on analysis runs — each one spends real API credits."""
+    limit = int(os.getenv("ANALYZE_RATE_LIMIT_PER_HOUR", "12"))
+    now = time.monotonic()
+    while _analyze_calls and now - _analyze_calls[0] > 3600:
+        _analyze_calls.popleft()
+    if len(_analyze_calls) >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit reached: max {limit} analyses per hour (set ANALYZE_RATE_LIMIT_PER_HOUR to change)",
+        )
+    _analyze_calls.append(now)
 
 
 # ── Request / Response schemas ──────────────────────────────────────────────
@@ -35,15 +68,16 @@ class WatchlistFilters(BaseModel):
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
-@router.post("/analyze")
+@router.post("/analyze", dependencies=[Depends(require_api_key)])
 async def analyze(req: AnalyzeRequest):
     """
     Trigger a full multi-agent stock analysis.
     Runs all 11 agents, saves results to DB, returns final verdict.
     """
     ticker = req.ticker.upper().strip()
-    if not ticker:
-        raise HTTPException(status_code=400, detail="Ticker is required")
+    if not ticker or not ticker.replace(".", "").replace("-", "").isalnum() or len(ticker) > 10:
+        raise HTTPException(status_code=400, detail="Ticker must be 1-10 alphanumeric characters")
+    _check_analyze_rate_limit()
 
     logger.info(f"POST /analyze — ticker={ticker}")
     logs = []
@@ -182,7 +216,7 @@ def get_sectors(db: Session = Depends(get_db)):
     return sorted([r[0] for r in rows if r[0]])
 
 
-@router.delete("/stock/{ticker}")
+@router.delete("/stock/{ticker}", dependencies=[Depends(require_api_key)])
 def delete_stock(ticker: str, db: Session = Depends(get_db)):
     """Remove a stock and all its analyses from the watchlist."""
     ticker = ticker.upper()

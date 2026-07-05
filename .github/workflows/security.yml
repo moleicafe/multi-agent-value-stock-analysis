@@ -1,0 +1,66 @@
+name: Security checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # scan full history
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit backend requirements
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: npm audit frontend (fail on high+)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+  auth-smoke-test:
+    name: Auth smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend deps
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Protected endpoints reject unauthenticated requests
+        working-directory: backend
+        env:
+          INVESTAI_API_KEY: ci-smoke-test-key
+          ANTHROPIC_API_KEY: unused-in-this-test
+        run: |
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 &
+          for i in $(seq 1 15); do curl -sf http://127.0.0.1:8000/health && break; sleep 2; done
+
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8000/api/analyze \
+            -H "Content-Type: application/json" -d '{"ticker":"TEST"}')
+          [ "$code" = "401" ] || { echo "FAIL: /analyze without key returned $code, expected 401"; exit 1; }
+
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE http://127.0.0.1:8000/api/stock/TEST)
+          [ "$code" = "401" ] || { echo "FAIL: DELETE without key returned $code, expected 401"; exit 1; }
+
+          echo "OK: protected endpoints require API key"

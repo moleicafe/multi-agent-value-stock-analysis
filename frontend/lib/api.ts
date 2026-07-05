@@ -10,6 +10,12 @@ function getBase(): string {
 }
 const BASE = getBase();
 
+// Optional: matches the backend's INVESTAI_API_KEY, required only for
+// analyze/delete. NOTE: NEXT_PUBLIC_ values ship in the browser bundle, so
+// this gates casual LAN access — it is not a secret from your page's visitors.
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
+const authHeaders: Record<string, string> = API_KEY ? { "X-API-Key": API_KEY } : {};
+
 async function get(path: string) {
   const res = await fetch(`${BASE}${path}`, { next: { revalidate: 60 } });
   if (!res.ok) throw new Error(await res.text());
@@ -21,7 +27,7 @@ async function get(path: string) {
 export async function analyzeStock(ticker: string) {
   const res = await fetch(`${BASE}/analyze`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify({ ticker }),
   });
   if (!res.ok) throw new Error(await res.text());
@@ -47,7 +53,7 @@ export async function getSectors(): Promise<string[]> {
 }
 
 export async function deleteStock(ticker: string) {
-  const res = await fetch(`${BASE}/stock/${ticker}`, { method: "DELETE" });
+  const res = await fetch(`${BASE}/stock/${ticker}`, { method: "DELETE", headers: authHeaders });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
